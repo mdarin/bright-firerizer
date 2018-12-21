@@ -25,6 +25,13 @@ const(
 
 var(
 	msgCounter int = 0
+// for localhost:1883
+//	MQTT_LOGIN = "user"
+//	MQTT_PASSWORD = "public"
+// for cargo
+	MQTT_LOGIN = "+79615244722"
+	MQTT_PASSWORD = "ac0e0a94-04fd-11e9-9e8e-f44d309c2889"
+	CID = "MiUt5vvEGW22PRDt9G6-C.zwU-DEH-o8b8kW9o7YInj-"
 )
 //
 // main driver
@@ -113,15 +120,16 @@ func helloMQTT(res chan []byte) {
 		//try MQTT 5.0 and fallback to MQTT 3.1.1
 		//libmqtt.WithVersion(libmqtt.V5, true),
 		// server address(es)
-		libmqtt.WithServer("localhost:1883"),
-		libmqtt.WithIdentity("user", "public"),
+		//libmqtt.WithServer("localhost:1883"),
+		//libmqtt.WithIdentity("user", "public"),
+		//libmqtt.WithIdentity(MQTT_LOGIN, MQTT_PASSWORD),
 		// authorize 
 		//> t_auth:login(<<"+79615244722">>, <<"123123">>).
 		// mqtt_login:Login  mqtt_password: Password
-		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
 		//libmqtt.WithClientID("id" + "+79615244722"),
-		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
+		libmqtt.WithServer("cargo.tvzavr.ru:1883"),
 		//libmqtt.WithIdentity("+79615244722", "06521b18-04f3-11e9-a59c-f44d309c2889"),
+		libmqtt.WithIdentity(MQTT_LOGIN, MQTT_PASSWORD),
 		// enable keepalive (10s interval) with 20% tolerance
 		libmqtt.WithKeepalive(10, 1.2),
 		// enable auto reconnect and set backoff strategy
@@ -166,6 +174,9 @@ func helloMQTT(res chan []byte) {
 					log.Printf("publish")
 					// publish some packet (just for example)
 					client.Publish([]*libmqtt.PublishPacket{
+						// our topic default shcheme
+						{TopicName: "/" + CID + "/baz", Payload: []byte("baz"), Qos: libmqtt.Qos2},//Qos0
+
 						{TopicName: "foo", Payload: []byte("bar"), Qos: libmqtt.Qos2},//Qos0
 						{TopicName: "bar", Payload: []byte("foo"), Qos: libmqtt.Qos2},//Qos1
 					}...)
@@ -197,10 +208,10 @@ func helloMQTT(res chan []byte) {
 		// handle every subscribed message (just for example)
 		client.Handle(".*", func(topic string, qos libmqtt.QosLevel, msg []byte) {
 			log.Printf("[%v] message: %v", topic, string(msg))
-			go func() {
+			go func(m []byte) {
 				defer func() { recover() }()
-				res<- msg
-			}()
+				res<- m
+			}(msg)
 			msgCounter++
 			if msgCounter >= 2 {
 				//5.Unsubscribe topic(s)
@@ -238,6 +249,10 @@ func helloMQTT(res chan []byte) {
 		go func() {
 			log.Printf("subscribe")
 			client.Subscribe([]*libmqtt.Topic{
+				// our topic default shcheme
+				{Name: "/" + CID + "/baz", Qos: libmqtt.Qos2},//Qos0
+				{Name: "/" + CID + "/res/baz", Qos: libmqtt.Qos2},//Qos0
+
 				{Name: "foo", Qos: libmqtt.Qos2},
 				{Name: "bar", Qos: libmqtt.Qos2},
 			}...)
