@@ -1,5 +1,5 @@
 #!/bin/bash
 
-make clean
+export GOPATH=$(pwd) && make clean_all
 exit 0
 

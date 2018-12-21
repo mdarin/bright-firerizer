@@ -15,11 +15,16 @@ import (
 	"google.golang.org/api/option"
 // mqtt
 	"github.com/goiiot/libmqtt"
+//	"examples"
 //TODO:rest
 )
 
 const(
-	TIMEOUT = 300
+	TIMEOUT = 3000
+)
+
+var(
+	msgCounter int = 0
 )
 //
 // main driver
@@ -31,7 +36,9 @@ func main() {
 	//
 	// If you would like to explore all the options available, please refer to
 	// [https://godoc.org/github.com/goiiot/libmqtt#Option]
-	helloMQTT()
+	res := make(chan []byte)
+	defer close(res)
+	helloMQTT(res)
 
 	//
 	// Admin SDK example
@@ -74,22 +81,28 @@ func main() {
 
 
 	doneCounter := 0;
-	select {
-		case <-done:
-			doneCounter++
-			if doneCounter >= 4 {
-				fmt.Println(" ! Done")
-			} else {
-				fmt.Println(" (I) Workers done:", doneCounter)
-			}
-	//	case <-time.After(TIMEOUT * time.Microsecond):
-		case <-time.After(TIMEOUT * time.Millisecond):
-			fmt.Println(" ! Timeout")
-	}
+	for stop := false; stop != true; {
+		select {
+			case msg := <-res:
+				fmt.Println(" [M] Channel ->", string(msg))
+			case <-done:
+				doneCounter++
+				if doneCounter >= 4 {
+					fmt.Println(" (I) Workers done:", doneCounter)
+					fmt.Println(" ! Done")
+				} else {
+					fmt.Println(" (I) Workers done:", doneCounter)
+				}
+			//case <-time.After(TIMEOUT * time.Microsecond):
+			case <-time.After(TIMEOUT * time.Millisecond):
+				fmt.Println(" ! Timeout")
+				stop = true
+		} // eof select
+	} // eof for
 } // eof main
 
 
-func helloMQTT() {
+func helloMQTT(res chan []byte) {
 
 	// 1.Go get this project
 	// 2.Import this package in your project file
@@ -97,13 +110,16 @@ func helloMQTT() {
 	// Create a client and enable auto reconnect when connection lost
 	// We primarily use `RegexRouter` for client
 	client, err := libmqtt.NewClient(
+		//try MQTT 5.0 and fallback to MQTT 3.1.1
+		//libmqtt.WithVersion(libmqtt.V5, true),
 		// server address(es)
-		//libmqtt.WithServer("localhost:1883"),
-		libmqtt.WithServer("cargo.tvzavr.ru:1883"),
+		libmqtt.WithServer("localhost:1883"),
+		libmqtt.WithIdentity("user", "public"),
+		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
 		// authorize 
 		//> t_auth:login(<<"+79615244722">>, <<"123123">>).
 		// mqtt_login:Login  mqtt_password: Password
-		libmqtt.WithIdentity("+79615244722", "bd8639b4-0443-11e9-9c14-f44d309c2889"),
+		//libmqtt.WithIdentity("+79615244722", "7292a0b4-0457-11e9-b766-f44d309c2889"),
 		// enable keepalive (10s interval) with 20% tolerance
 		libmqtt.WithKeepalive(10, 1.2),
 		// enable auto reconnect and set backoff strategy
@@ -119,9 +135,86 @@ func helloMQTT() {
 		panic("create mqtt client failed")
 	}
 
+	// register net handler
+	{
+		client.HandleNet(func(server string, err error) {
+			if err != nil {
+				log.Printf("error happened to connection to server [%v]: %v", server, err)
+			}
+		})
+		// register persist handler, you don't need this if all your message had QoS 0
+		client.HandlePersist(func(err error) {
+			if err != nil {
+				log.Printf("session persist error: %v", err)
+			}
+		})
+		// register subscribe handler
+		client.HandleSub(func(topics []*libmqtt.Topic, err error) {
+			if err != nil {
+				for _, t := range topics {
+					log.Printf("subscribe to topic [%v] failed: %v", t.Name, err)
+				}
+			} else {
+				for _, t := range topics {
+					log.Printf("subscribe to topic [%v] success: %v", t.Name, err)
+				}
+
+				// run publishing messages
+				//go func() {
+					log.Printf("publish")
+					// publish some packet (just for example)
+					client.Publish([]*libmqtt.PublishPacket{
+						{TopicName: "foo", Payload: []byte("bar"), Qos: libmqtt.Qos2},//Qos0
+						{TopicName: "bar", Payload: []byte("foo"), Qos: libmqtt.Qos2},//Qos1
+					}...)
+				//}()
+			}
+		})
+		// register unsubscribe handler
+		client.HandleUnSub(func(topic []string, err error) {
+			if err != nil {
+				// handle unsubscribe failure
+				for _, t := range topic {
+					log.Printf("unsubscribe to topic [%v] failed: %v", t, err)
+				}
+			} else {
+				for _, t := range topic {
+					log.Printf("unsubscribe to topic [%v] failed: %v", t, err)
+				}
+			}
+		})
+		// register publish handler
+		client.HandlePub(func(topic string, err error) {
+			if err != nil {
+				log.Printf("publish packet to topic [%v] failed: %v", topic, err)
+			} else {
+				log.Printf("publish packet to topic [%v] success: %v", topic, err)
+			}
+		})
+
+		// handle every subscribed message (just for example)
+		client.Handle(".*", func(topic string, qos libmqtt.QosLevel, msg []byte) {
+			log.Printf("[%v] message: %v", topic, string(msg))
+			go func() {
+				res<- msg
+			}()
+			msgCounter++
+			if msgCounter >= 2 {
+				//5.Unsubscribe topic(s)
+				client.UnSubscribe("foo", "bar")
+				//6.Destroy the client when you would like to
+				// use true for a immediate disconnect to server
+				// use false to send a DisConn packet to server before disconnect
+				client.Destroy(true)
+			}
+		})
+
+	} // eof handlers
+
 	//4.Register the handlers and Connect, then you are ready to pub/sub with server
 	// connect to server
 	client.Connect(func(server string, code byte, err error) {
+		log.Printf("connect")
 		if err != nil {
 			// failed
 			panic(err)
@@ -137,32 +230,30 @@ func helloMQTT() {
 		// (the `server` is one of your provided `servers` when create the client)
 		// start your business logic here or send a signal to your logic to start
 
+		// on connected success
 		// subscribe some topic(s)
-		client.Subscribe([]*libmqtt.Topic{
-			{Name: "foo"},
-			{Name: "bar", Qos: libmqtt.Qos1},
-		}...)
+		go func() {
+			log.Printf("subscribe")
+			client.Subscribe([]*libmqtt.Topic{
+				{Name: "foo", Qos: libmqtt.Qos2},
+				{Name: "bar", Qos: libmqtt.Qos2},
+			}...)
+		}()
 
 
-		// Handle register subscription message route 
-		client.Handle("foo", func (topic string, Qos libmqtt.QosLevel, msg []byte) {
-			fmt.Println("/foo ->",msg)
-		})
-
-		// publish some topic message(s)
-		client.Publish([]*libmqtt.PublishPacket{
-				{TopicName: "foo", Payload: []byte("bar"), Qos: libmqtt.Qos0},
-				{TopicName: "bar", Payload: []byte("foo"), Qos: libmqtt.Qos1},
-		}...)
 	})
 
+	// wait for all connection to exit 
+	client.Wait()
+
+
 	//5.Unsubscribe topic(s)
-	client.UnSubscribe("foo", "bar")
+	//client.UnSubscribe("foo", "bar")
 
 	//6.Destroy the client when you would like to
 	// use true for a immediate disconnect to server
 	// use false to send a DisConn packet to server before disconnect
-	client.Destroy(true)
+	//client.Destroy(true)
 }
 
 

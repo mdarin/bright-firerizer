@@ -18,10 +18,15 @@ deps:
 	@echo "Done!" 
 
 clean:
-	@echo "Sweepping up..."
+	@echo "Cleaning..."
 	@echo "GOPATH=$(GO)"
 	@go clean src/main.go 
 	@rm -f admin_sdk
+	@echo "Done!"
+
+clean_all:
+	@echo "Sweepping up..."
+	@echo "GOPATH=$(GO)"
 	@rm -rf pkg
 	$(shell for item in $$(ls $$GOPATH/src); do [ -f "$$GOPATH/src/$$item" ] || rm -rf "$$GOPATH/src/$$item"; done)
 	@echo "Done!"

@@ -1,4 +1,4 @@
 #!/bin/bash
 
-export GOPATH=$(pwd) && make
+export GOPATH=$(pwd) && make clean && make
 exit 0
