@@ -115,11 +115,13 @@ func helloMQTT(res chan []byte) {
 		// server address(es)
 		libmqtt.WithServer("localhost:1883"),
 		libmqtt.WithIdentity("user", "public"),
-		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
 		// authorize 
 		//> t_auth:login(<<"+79615244722">>, <<"123123">>).
 		// mqtt_login:Login  mqtt_password: Password
-		//libmqtt.WithIdentity("+79615244722", "7292a0b4-0457-11e9-b766-f44d309c2889"),
+		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
+		//libmqtt.WithClientID("id" + "+79615244722"),
+		//libmqtt.WithServer("cargo.tvzavr.ru:1883"),
+		//libmqtt.WithIdentity("+79615244722", "06521b18-04f3-11e9-a59c-f44d309c2889"),
 		// enable keepalive (10s interval) with 20% tolerance
 		libmqtt.WithKeepalive(10, 1.2),
 		// enable auto reconnect and set backoff strategy
@@ -196,6 +198,7 @@ func helloMQTT(res chan []byte) {
 		client.Handle(".*", func(topic string, qos libmqtt.QosLevel, msg []byte) {
 			log.Printf("[%v] message: %v", topic, string(msg))
 			go func() {
+				defer func() { recover() }()
 				res<- msg
 			}()
 			msgCounter++
