@@ -24,7 +24,7 @@ clean:
 	@rm -f admin_sdk
 	@echo "Done!"
 
-clean_all:
+clean_all: clean
 	@echo "Sweepping up..."
 	@echo "GOPATH=$(GO)"
 	@rm -rf pkg
